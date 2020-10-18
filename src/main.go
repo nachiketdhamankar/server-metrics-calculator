@@ -37,6 +37,12 @@ type processedStats struct {
 	largestResponse   int
 }
 
+/**
+Creates a connection to the given URL with SSL socket. Sends a standard GET message using socket.
+Start the timer before sending the connection and stop the timer after the message is received from the server.
+Return the duration of the time required from connection to receiving of the last byte, the response status code and
+the response.
+*/
 func getHttpsResponse(addr customUrl) profilingStats {
 	timeout, _ := time.ParseDuration("7s")
 	dialer := net.Dialer{
@@ -78,6 +84,13 @@ func getHttpsResponse(addr customUrl) profilingStats {
 	}
 }
 
+/*
+Creates a connection to the given URL (without SSL socket). Sends a standard GET message using socket.
+Start the timer before sending the connection and stop the timer after the message is received from the server.
+Return the duration of the time required from connection to receiving of the last byte, the response status code and
+the response.
+Exits the program if an error is encountered.
+*/
 func getHttpResponse(addr customUrl) profilingStats {
 	log.WithFields(log.Fields{
 		"urlHostName": addr.hostname,
@@ -89,18 +102,21 @@ func getHttpResponse(addr customUrl) profilingStats {
 
 	conn, err := net.Dial("tcp", addr.hostname+":"+addr.protocol)
 	if err != nil {
-		fmt.Printf("Error while creating connection: %s\n", err)
+		log.Error("Error while creating connection: %s\n", err)
+		log.Exit(1)
 	}
 	test1 := "GET " + addr.path + " HTTP/1.0\r\nHost: " + addr.hostname + "\r\n\r\n"
 
 	_, err = fmt.Fprintf(conn, test1)
 	if err != nil {
-		fmt.Printf("Error while sending request: %s\n", err)
+		log.Error("Error while sending request: %s\n", err)
+		log.Exit(1)
 	}
 
 	resp, err := ioutil.ReadAll(conn)
 	if err != nil {
-		fmt.Printf("Error while reading from connection: %s\n", err)
+		log.Error("Error while reading from connection: %s\n", err)
+		log.Exit(1)
 	}
 
 	duration := time.Since(start)
@@ -108,12 +124,14 @@ func getHttpResponse(addr customUrl) profilingStats {
 	response := string(resp)
 	statusCode, err := strconv.Atoi(response[9:12])
 	if err != nil {
-		fmt.Printf("Error while getting statusCode: %s\n", err)
+		log.Error("Error while getting statusCode: %s\n", err)
+		log.Exit(1)
 	}
 
 	err = conn.Close()
 	if err != nil {
-		fmt.Printf("Error while closing connection: %s\n", err)
+		log.Error("Error while closing connection: %s\n", err)
+		log.Exit(1)
 	}
 
 	return profilingStats{
@@ -123,6 +141,10 @@ func getHttpResponse(addr customUrl) profilingStats {
 	}
 }
 
+/*
+Makes an appropriate request based on the scheme of the URL - currently supporting http and https.
+Will return an error for other schemes.
+*/
 func makeRequest(addr customUrl) profilingStats {
 	switch addr.protocol {
 	case "http":
@@ -136,6 +158,9 @@ func makeRequest(addr customUrl) profilingStats {
 	return profilingStats{}
 }
 
+/*
+Finds mean of the given slice. Returns 0 if no values.
+*/
 func getMean(values []int64) float64 {
 	if len(values) < 1 {
 		log.Debug("Attempted to find a mean for array with no values")
@@ -148,6 +173,9 @@ func getMean(values []int64) float64 {
 	return sum / float64(len(values))
 }
 
+/*
+Processes the statistics received. Calculates the required metrics and fills up the processedStats struct.
+*/
 func processStats(stats []profilingStats) processedStats {
 	if len(stats) < 1 {
 		return processedStats{}
@@ -229,10 +257,17 @@ func processStats(stats []profilingStats) processedStats {
 	return finalStats
 }
 
+/*
+Fetches the html page from the given url.
+*/
 func fetchPage(httpAddr customUrl) string {
 	response := makeRequest(httpAddr)
 	return string(response.response)
 }
+
+/*
+Formats the processed metrics into string. Returns the string in the appropriate format.
+*/
 func formatProcessedOutput(stats processedStats, profileCount int) string {
 	var str strings.Builder
 	str.WriteString(fmt.Sprintf("Number of requests: %d\n", profileCount))
@@ -252,6 +287,10 @@ func formatProcessedOutput(stats processedStats, profileCount int) string {
 	return str.String()
 
 }
+
+/*
+Runs a loop to fetch the stats for the given url.
+*/
 func fetchProfilingMetrics(httpAddr customUrl, profileCount int) string {
 	var totalStats []profilingStats
 	for i := 1; i <= profileCount; i++ {
@@ -271,6 +310,9 @@ func fetchProfilingMetrics(httpAddr customUrl, profileCount int) string {
 	return formatProcessedOutput(processStats(totalStats), profileCount)
 }
 
+/*
+Sets up the logger.
+*/
 func init() {
 	// Set logging
 	log.SetFormatter(&log.JSONFormatter{})
@@ -280,6 +322,9 @@ func init() {
 	log.SetLevel(log.ErrorLevel)
 }
 
+/*
+Checks if the given string is a valid url. Returns the customUrl struct and the bool if the given url is valid or not.
+*/
 func isValidUrl(toTest string) (customUrl, bool) {
 	_, err := url.ParseRequestURI(toTest)
 	if err != nil {
@@ -306,6 +351,9 @@ func isValidUrl(toTest string) (customUrl, bool) {
 
 }
 
+/*
+Program Runner.
+*/
 func main() {
 	cmdParser := cmdline.New()
 	cmdParser.AddOption("u", "url", "value", "Enter the url to process")
