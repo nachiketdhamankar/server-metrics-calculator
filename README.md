@@ -46,11 +46,10 @@ ___
 
 ___
 #### Comparison
-| Number of Requests 	| Amazon 	                                | Google 	                                  | Worker 	                                  |                                       
-|--------------------	|--------	                                |--------	                                  |--------	                                  |                                       
-|        100          	|![Amazon100](assets/amazon-url-100.PNG)    |![Google100](assets/google-url-100.PNG)      |![worker100](assets/worker-url-100.PNG)    |                                        
+| Number of Requests 	| Amazon 	                                | Google 	                                  | Worker 	                                  |
+|--------------------	|--------	                                |--------	                                  |--------	                                  |
+|        100          	|![Amazon100](assets/amazon-url-100.PNG)    |![Google100](assets/google-url-100.PNG)      |![worker100](assets/worker-url-100.PNG)    |
 |       1000         	|![Amazon1000](assets/amazon-url-1000.PNG)  |![Google1000](assets/google-url-1000.PNG)    |![worker1000](assets/worker-url-1000.PNG)  |                                       
-|                    	|        	                                |        	                                  |        	                                  |                                       
 
 * For 100,
     - The worker has the *fastest time*: It served the client with a response in a whooping 76 ms. Amazon comes in 2nd with 88ms.
