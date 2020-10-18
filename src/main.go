@@ -2,24 +2,24 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"github.com/galdor/go-cmdline"
 	mathPackage "github.com/montanaflynn/stats"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
-type url struct {
+type customUrl struct {
 	hostname string
 	path     string
 	protocol string
-}
-type minMaxResponseTimes struct {
-	minResponseTime int64
-	maxResponseTime int64
 }
 type profilingStats struct {
 	statusCode int
@@ -27,8 +27,8 @@ type profilingStats struct {
 	duration   time.Duration
 }
 type processedStats struct {
-	fastestTime       int64
-	slowestTime       int64
+	fastestTime       float64
+	slowestTime       float64
 	meanTime          float64
 	medianTime        float64
 	requestsSucceeded float32
@@ -37,7 +37,7 @@ type processedStats struct {
 	largestResponse   int
 }
 
-func getHttpsResponse(addr url) profilingStats {
+func getHttpsResponse(addr customUrl) profilingStats {
 	timeout, _ := time.ParseDuration("7s")
 	dialer := net.Dialer{
 		Timeout: timeout,
@@ -78,7 +78,7 @@ func getHttpsResponse(addr url) profilingStats {
 	}
 }
 
-func getHttpResponse(addr url) profilingStats {
+func getHttpResponse(addr customUrl) profilingStats {
 	log.WithFields(log.Fields{
 		"urlHostName": addr.hostname,
 		"urlPath":     addr.path,
@@ -123,7 +123,7 @@ func getHttpResponse(addr url) profilingStats {
 	}
 }
 
-func makeRequest(addr url) profilingStats {
+func makeRequest(addr customUrl) profilingStats {
 	switch addr.protocol {
 	case "http":
 		return getHttpResponse(addr)
@@ -148,28 +148,18 @@ func getMean(values []int64) float64 {
 	return sum / float64(len(values))
 }
 
-func getMeanTimesInms(stats []profilingStats) processedStats {
+func processStats(stats []profilingStats) processedStats {
 	if len(stats) < 1 {
 		return processedStats{}
 	}
-
 	var finalStats processedStats
 	var successResponseTime []int64
 	var failureResponseTime []int64
-	var successEdgeTimes minMaxResponseTimes
-	var failureEdgeTimes minMaxResponseTimes
-
-	// Set default values for min and max values
-	successEdgeTimes.maxResponseTime = -1 << 63
-	failureEdgeTimes.maxResponseTime = -1 << 63
-	successEdgeTimes.minResponseTime = 1<<63 - 1
-	failureEdgeTimes.minResponseTime = 1<<63 - 1
 
 	// Initialise the smallest and largest response to 1st element of stats
 	finalStats.largestResponse = len(stats[0].response)
 	finalStats.smallestResponse = len(stats[0].response)
 
-	// Calculate min, max for success times and failure times
 	// Append the success times and the failure times into appropriate arrays
 	for _, stat := range stats {
 		log.WithFields(log.Fields{
@@ -179,16 +169,8 @@ func getMeanTimesInms(stats []profilingStats) processedStats {
 		}).Info("Processing stat: ")
 
 		if stat.statusCode == 200 {
-
 			currentDuration := stat.duration.Milliseconds()
 			successResponseTime = append(successResponseTime, currentDuration)
-
-			// Find min, max for Success Response Times
-			if currentDuration < successEdgeTimes.minResponseTime {
-				successEdgeTimes.minResponseTime = currentDuration
-			} else if currentDuration > successEdgeTimes.maxResponseTime {
-				successEdgeTimes.maxResponseTime = currentDuration
-			}
 
 			// Find largest and smallest byte size for success
 			if len(stat.response) < finalStats.smallestResponse {
@@ -196,33 +178,18 @@ func getMeanTimesInms(stats []profilingStats) processedStats {
 			} else if len(stat.response) > finalStats.largestResponse {
 				finalStats.largestResponse = len(stat.response)
 			}
-
 		} else {
-
 			currentDuration := stat.duration.Milliseconds()
 			failureResponseTime = append(failureResponseTime, currentDuration)
 
-			// Find min, max for Failed Response Times
-			if currentDuration < failureEdgeTimes.minResponseTime {
-				failureEdgeTimes.minResponseTime = currentDuration
-			} else if currentDuration > failureEdgeTimes.maxResponseTime {
-				failureEdgeTimes.maxResponseTime = currentDuration
-			}
-
 			// Add failure codes to the final stats struct
 			finalStats.errorStatusCodes = append(finalStats.errorStatusCodes, stat.statusCode)
-
 		}
 	}
 
-	log.WithFields(log.Fields{
-		"successEdgeTimes": successEdgeTimes,
-		"failureEdgeTimes": failureEdgeTimes,
-	}).Info("Edge Times")
-
-
-	finalStats.fastestTime = successEdgeTimes.minResponseTime
-	finalStats.slowestTime = successEdgeTimes.maxResponseTime
+	responseTimes := append(failureResponseTime, successResponseTime...)
+	finalStats.fastestTime, _ = mathPackage.Min(mathPackage.LoadRawData(responseTimes))
+	finalStats.slowestTime, _ = mathPackage.Max(mathPackage.LoadRawData(responseTimes))
 
 	log.WithFields(log.Fields{
 		"successTimes": successResponseTime,
@@ -230,45 +197,64 @@ func getMeanTimesInms(stats []profilingStats) processedStats {
 	}).Debug("Response Times")
 
 	// Calculate mean
-	successMeanTime := getMean(successResponseTime)
-
-	var failureMeanTime float64 = 0
-	if len(failureResponseTime) > 0 {
-		failureMeanTime = getMean(failureResponseTime)
+	var meanTime float64 = 0.0
+	if len(successResponseTime) > 0 {
+		meanTime = getMean(successResponseTime)
+	} else if len(failureResponseTime) > 0 {
+		meanTime = getMean(failureResponseTime)
 	}
 	log.WithFields(log.Fields{
-		"successMeanTime": successMeanTime,
-		"failureMeanTime": failureMeanTime,
-	}).Info("Mean Times")
-	finalStats.meanTime = successMeanTime
+		"meanTime": meanTime,
+	}).Debug("Mean Time")
+	finalStats.meanTime = meanTime
 
 	// Calculate median
-	finalStats.medianTime, _ = mathPackage.Median(mathPackage.LoadRawData(successResponseTime))
+	var medianTime float64 = 0.0
+	if len(successResponseTime) > 0 {
+		medianTime, _ = mathPackage.Median(mathPackage.LoadRawData(successResponseTime))
+	} else {
+		medianTime, _ = mathPackage.Median(mathPackage.LoadRawData(failureResponseTime))
+	}
+	log.WithFields(log.Fields{
+		"medianTime": finalStats.medianTime,
+	}).Debug("Median Time")
+	finalStats.medianTime = medianTime
+
+	// Calculate percentage of requests that succeeded
+	if len(successResponseTime)+len(failureResponseTime) <= 0 {
+		finalStats.requestsSucceeded = 0
+	} else {
+		finalStats.requestsSucceeded = float32(len(successResponseTime) / (len(failureResponseTime) + len(successResponseTime)) * 100)
+	}
 	return finalStats
 }
 
-func processStats(stats []profilingStats) {
-	meanTimeInms := getMeanTimesInms(stats)
-	fmt.Print(meanTimeInms)
+func fetchPage(httpAddr customUrl) string {
+	response := makeRequest(httpAddr)
+	return string(response.response)
 }
-func init() {
-	log.SetFormatter(&log.JSONFormatter{})
-	log.SetOutput(os.Stdout)
-	log.SetReportCaller(true)
-	//log.SetLevel(log.InfoLevel)
-	log.SetLevel(log.ErrorLevel)
-}
-
-func main() {
-
-	httpAddr := url{
-		hostname: "google.in",
-		path:     "/",
-		protocol: "https",
+func formatProcessedOutput(stats processedStats, profileCount int) string {
+	var str strings.Builder
+	str.WriteString(fmt.Sprintf("Number of requests: %d\n", profileCount))
+	str.WriteString(fmt.Sprintf("Fastest Time: %g ms\n", stats.fastestTime))
+	str.WriteString(fmt.Sprintf("Slowest Time: %g ms\n", stats.slowestTime))
+	str.WriteString(fmt.Sprintf("Mean Time: %g ms\n", stats.meanTime))
+	str.WriteString(fmt.Sprintf("Median Time: %g ms\n", stats.medianTime))
+	str.WriteString(fmt.Sprintf("Percentage requests that succeeded: %g%% \n", stats.requestsSucceeded))
+	if len(stats.errorStatusCodes) > 0 {
+		errorCodesStr, _ := json.Marshal(stats.errorStatusCodes)
+		str.WriteString(fmt.Sprintf("Error codes: [%s]\n", strings.Trim(string(errorCodesStr), "[]")))
+	} else {
+		str.WriteString(fmt.Sprintf("Error codes: []\n"))
 	}
+	str.WriteString(fmt.Sprintf("Size of bytes of the largest response: %d bytes\n", stats.largestResponse))
+	str.WriteString(fmt.Sprintf("Size of bytes of the smalleset response: %d bytes\n", stats.smallestResponse))
+	return str.String()
 
+}
+func fetchProfilingMetrics(httpAddr customUrl, profileCount int) string {
 	var totalStats []profilingStats
-	for i := 1; i <= 5; i++ {
+	for i := 1; i <= profileCount; i++ {
 		req := makeRequest(httpAddr)
 		totalStats = append(totalStats, req)
 		log.WithFields(log.Fields{
@@ -282,6 +268,95 @@ func main() {
 			"responseDurationInms": req.duration.Milliseconds(),
 		}).Info("Profiling stats")
 	}
-	processStats(totalStats)
+	return formatProcessedOutput(processStats(totalStats), profileCount)
+}
 
+func init() {
+	// Set logging
+	log.SetFormatter(&log.JSONFormatter{})
+	log.SetOutput(os.Stdout)
+	log.SetReportCaller(true)
+	//Set default logging level
+	log.SetLevel(log.ErrorLevel)
+}
+
+func isValidUrl(toTest string) (customUrl, bool) {
+	_, err := url.ParseRequestURI(toTest)
+	if err != nil {
+		return customUrl{}, false
+	}
+	u, err := url.Parse(toTest)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return customUrl{}, false
+	}
+
+	if u.Path == "" {
+		return customUrl{
+			hostname: u.Host,
+			path:     "/",
+			protocol: u.Scheme,
+		}, true
+	} else {
+		return customUrl{
+			hostname: u.Host,
+			path:     u.Path,
+			protocol: u.Scheme,
+		}, true
+	}
+
+}
+
+func main() {
+	cmdParser := cmdline.New()
+	cmdParser.AddOption("u", "url", "value", "Enter the url to process")
+	cmdParser.AddOption("p", "profile", "value", "Enter the number of requests to be sent")
+	cmdParser.AddOption("d", "debug", "value", "Enter the debug level")
+	cmdParser.Parse(os.Args)
+
+	if cmdParser.IsOptionSet("debug") {
+		debugLevel, err := strconv.Atoi(cmdParser.OptionValue("debug"))
+		if err != nil || debugLevel <= 0 || debugLevel > 5 {
+			log.Error("Enter valid positive number for debugLevel. Between 1 - 5")
+			log.Exit(1)
+		}
+		log.SetLevel(log.Level(debugLevel))
+	}
+
+	if cmdParser.IsOptionSet("url") == false {
+		log.Error("Missing url. Refer --help")
+		log.Exit(1)
+	}
+
+	inputUrl := cmdParser.OptionValue("url")
+	httpAddr, isValidUrl := isValidUrl(inputUrl)
+	if isValidUrl == false {
+		log.Error("Enter valid url")
+		log.Exit(1)
+	}
+
+	if cmdParser.IsOptionSet("profile") {
+		profileCount, err := strconv.Atoi(cmdParser.OptionValue("profile"))
+		if err != nil || profileCount <= 0 {
+			log.Error("Enter valid positive number for profile. Refer --help")
+			log.Exit(1)
+		}
+
+		log.WithFields(log.Fields{
+			"URL Hostname": httpAddr.hostname,
+			"URL Scheme":   httpAddr.protocol,
+			"URL Path":     httpAddr.path,
+			"profileCount": profileCount,
+		}).Info("Fetch url metrics")
+
+		fmt.Println(fetchProfilingMetrics(httpAddr, profileCount))
+	} else {
+
+		log.WithFields(log.Fields{
+			"URL Hostname": httpAddr.hostname,
+			"URL Scheme":   httpAddr.protocol,
+			"URL Path":     httpAddr.path,
+		}).Info("Fetch page")
+
+		fmt.Println(fetchPage(httpAddr))
+	}
 }
