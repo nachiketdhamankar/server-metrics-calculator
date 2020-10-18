@@ -58,6 +58,7 @@ ___
     - The *average Response time* for the worker is fastest and is ~30 ms faster than Amazon (who comes in 2nd)
     - The *median time* for worker is 97.5 ms. Which means there were 50 requests faster than 97.5ms. Amazon comes in a close second with a median time of 105ms.
     - Overall the worker serves faster than Amazon and Google. While Amazon performs well, there's a clear difference between Worker and Amazon. 
+    - Since the response times take into factor the size of the response, a better idea could be given by taking the size into consideration. A unit of byte/ms would give the ideal performance of each server. 
     
 * For 1000,
     - Amazon has the *fastest time* for 1000 requests. While it has the largest byte size array, it takes the least time.
