@@ -1,4 +1,4 @@
-#### Performance Metrics Calculator
+## Performance Metrics Calculator
 ___
 
 This tool calculates the following metrics 
@@ -13,7 +13,7 @@ This tool calculates the following metrics
 - The size in bytes of the largest response
 
 
-###### Usage
+#### Usage
 ___
 1. Install Go
 2. Make sure the GOROOT and GOPATH are set correctly
@@ -28,7 +28,7 @@ ___
     - go run . --url {url} --profile {Number of requests}
 
 
-###### Working
+#### Working
 ___
 - Definition of Response Time for this tool: The time taken to establish the connection to the server and receive the _all_ the data sent by the server. Hence, if the data sends a lot of data, the response time will increase.
 - If there are no successful responses from the server, the *Fastest Response Time*, *Slowest Response Time*, *Mean Response Time*, *Median Response Time*, *Size of the smallest response*, *Size of the largest response* are for the responses with status codes other than OK (200). 
@@ -36,7 +36,7 @@ ___
 - Currently supports only _http_ and _https_.
 - The connection request times out after 7s.
 
-###### Screenshots
+#### Screenshots
 ___
 ![helpImage](assets/help.PNG)
 
@@ -47,10 +47,10 @@ ___
 ![workerLinksPageFetch](assets/url-failure.PNG)
 
 
-###### Comparison
+#### Comparison
 ___
-| Number of Requests 	| Amazon 	                            | Google 	                            | Worker 	                            |
-|--------------------	|--------	                            |--------	                            |--------	                            |
-|        100          	|![Amazon100](assets/amazon-url-100.PNG)|![Google100](assets/google-url-100.PNG)|![worker100](assets/worker-url-100.PNG)|
-|                    	|        	                            |        	                            |        	                            |
-|                    	|        	                            |        	                            |        	                            |
+| Number of Requests 	| Amazon 	                                | Google 	                                  | Worker 	                                  |                                       
+|--------------------	|--------	                                |--------	                                  |--------	                                  |                                       
+|        100          	|![Amazon100](assets/amazon-url-100.PNG)    |![Google100](assets/google-url-100.PNG)      |![worker100](assets/worker-url-100.PNG)    |                                        
+|       1000         	|![Amazon1000](assets/amazon-url-1000.PNG)  |![Google1000](assets/google-url-1000.PNG)    |![worker1000](assets/worker-url-1000.PNG)  |                                       
+|                    	|        	                                |        	                                  |        	                                  |                                       
