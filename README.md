@@ -19,7 +19,7 @@ ___
     - "github.com/galdor/go-cmdline"
     - "github.com/montanaflynn/stats"
     - "github.com/sirupsen/logrus"
-4. cd into the repo
+4. cd into the repo/src
 5. Commands
     - go run . --help
     - go run . --url {url}
